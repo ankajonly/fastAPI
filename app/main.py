@@ -1,15 +1,15 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Path as path
 from service.products import get_all_products
-
+from pydantic import BaseModel, Field
+from typing import Annotated
 
 app = FastAPI()
 
+
 @app.get("/")
 def root():
-    return {
-        "message": "Hello, World!",
-        "status": "success"
-    }
+    return {"message": "Hello, World!", "status": "success"}
+
 
 # with open("data/products.json", "r", encoding="utf-8") as f:
 #     data = json.load(f)
@@ -17,10 +17,74 @@ def root():
 
 
 @app.get("/products")
-def get_products():
-    return get_all_products()
+def list_products(
+    name: str = Query(
+        None,
+        min_length=3,
+        max_length=50,
+        description="Name of the product to search for (case-insensitive)",
+    ),
+    sort_by_price: str = Query(default=False, description="Sort product by price"),
+    sort_order: str = Query(
+        default="asc",
+        description="Sort order: 'asc' for ascending, 'desc' for descending",
+    ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=100,
+        description="Limit the number of products returned (1-100)",
+    ),
+):
+    products = get_all_products()
+
+    if name:
+        needle = name.strip().lower()
+        products = [p for p in products if needle in p.get("name", "").lower()]
+
+    if not products:
+        raise HTTPException(
+            status_code=404, detail=f"No products found matching name '{name}'"
+        )
+
+    if sort_by_price:
+        reverse = sort_order == "desc"
+        products.sort(key=lambda x: x.get("price", 0), reverse=reverse)
+
+    total = len(products)
+    products = products[1:limit]
+
+    return {
+        "total": total,
+        "products": products,
+    }
 
 
+@app.get("/products/{product_id}")
+def get_products_by_id(product_id: str = path(
+    ...,
+    title = "product id",
+    description = "The ID of the product to retrieve",
+)):
+    products = get_all_products()
+    for product in products:
+        if product.get("id") == int(product_id):
+            return product
+
+    raise HTTPException(status_code=404, detail="product not found")
+
+class product(BaseModel):
+    id: int
+    name: str
+
+    
+@app.post("/products", status_code=201)
+def create_product(product: product):
+    return product
+
+# @app.get("/products")
+# def get_products():
+#     return get_all_products()
 
 
 # @app.get("/products/category/{category}")
@@ -33,7 +97,7 @@ def get_products():
 
 # @app.get("/products/{product_id}")
 # def get_product(product_id: int):
-    
+
 #     product = products.get(product_id)
 #     if product:
 #         return {
